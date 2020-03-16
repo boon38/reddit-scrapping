@@ -1,0 +1,79 @@
+#setting up
+import praw
+import pandas as pd
+import nltk
+from pprint import pprint
+
+nltk.download('vader_lexicon')
+
+#need to create a reddit app (personal use script) to get the id, secret and agent
+reddit = praw.Reddit(client_id='your client id',
+                     client_secret='your client secret',
+                     password='your password',
+                     user_agent='your app agent',
+                     username='your username')
+                     
+#obtain subreddit top headlines (example here is Xbox One subreddit)
+headlines = set()
+
+for submission in reddit.subreddit('xboxone').top(limit=1000):
+    headlines.add(submission.title)
+    display.clear_output()
+    print(len(headlines))
+  
+#1. sentiment analysis
+#get score
+from nltk.sentiment.vader import SentimentIntensityAnalyzer as SIA
+sia = SIA()
+results = []
+
+for line in headlines:
+    pol_score = sia.polarity_scores(line)
+    pol_score['headline'] = line
+    results.append(pol_score)
+
+df = pd.DataFrame.from_records(results)
+df.head()
+
+#setting score criteria for positive, neutral  and negative
+df['label'] = 0  #neutral
+df.loc[df['compound'] > 0.1, 'label'] = 1  #positive
+df.loc[df['compound'] < -0.5, 'label'] = -1  #negative
+
+#printing headlines with tags
+print("Positive headlines:\n")
+pprint(list(df[df['label'] == 1].headline)[:5], width=200)
+
+print("\nNegative headlines:\n")
+pprint(list(df[df['label'] == -1].headline)[:5], width=200)
+
+#count how many are there in this dataset
+print(df.label.value_counts())
+print(df.label.value_counts(normalize=True) * 100)
+label = pd.DataFrame(list(df.label.value_counts(normalize=True) * 100), columns = ["Percentage"])
+label.to_csv('output/XboxOneLabel.csv',index=True)
+
+#2. most common words
+
+#create functions 
+from nltk.tokenize import word_tokenize, RegexpTokenizer
+from nltk.corpus import stopwords
+tokenizer = RegexpTokenizer(r'\w+')
+stop_words = stopwords.words('english')
+def process_text(headlines):
+    tokens = []
+    for line in headlines:
+        toks = tokenizer.tokenize(line)
+        toks = [t.lower() for t in toks if t.lower() not in stop_words]
+        tokens.extend(toks)
+    
+    return tokens
+
+#create most common words table and save as csv
+pos_lines = list(df[df.label == 1].headline)
+
+pos_tokens = process_text(pos_lines)
+freq = nltk.FreqDist(pos_tokens) 
+common = pd.DataFrame(list(freq.items()), columns = ["Word","Frequency"])
+
+common.to_csv('output/XboxOneCommon.csv',index=True)
